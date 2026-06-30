@@ -34,21 +34,52 @@ Never attempt to disable this check or route secrets around it.
 
 ## Workflow
 
-Plan, then run, then check status — all driven by the orchestrator:
+This template supports three planning routes:
+
+### Main PRD route
+
+Use this when the work changes product goals, target users, core flows, MVP
+scope, explicit non-goals, or other first-principles product boundaries.
 
 ```bash
-python orchestrator/agent-team.py plan  "describe the requirement"
+python orchestrator/agent-team.py plan --from-prd docs/prd/active/PRD-001.md
 python orchestrator/agent-team.py run   TASK-001
 python orchestrator/agent-team.py status
 python orchestrator/agent-team.py integrate
 ```
 
-- `plan` — a headless Claude session writes an EPIC + task files; it does not
-  edit application code.
+### Feature brief route
+
+Use this when the work is an additive or local product enhancement that should
+not rewrite the main PRD.
+
+```bash
+python orchestrator/agent-team.py plan --from-brief docs/prd/changes/active/FEATURE-001.md
+python orchestrator/agent-team.py run   TASK-001
+python orchestrator/agent-team.py status
+python orchestrator/agent-team.py integrate
+```
+
+### Direct issue route
+
+Use this for bugfixes, small repairs, localized optimizations, style/copy fixes,
+or tests that do not change product behavior.
+
+```bash
+python orchestrator/agent-team.py plan  "fix login button not responding"
+python orchestrator/agent-team.py run   TASK-001
+python orchestrator/agent-team.py status
+python orchestrator/agent-team.py integrate
+```
+
+- `prd` — a product-consultant flow that creates or updates the main PRD, creates feature briefs for additive/local product changes, or routes true bugfixes away from PRD entirely.
+- `plan` — reads the main PRD, reads a feature brief plus main PRD, or plans directly from an engineering issue depending on the route.
 - `run` — executes one task in a worktree: implement → verify → commit → push →
   open PR → **auto-merge** → move the task to `completed`.
 - `status` — shows task counts per state.
 - `integrate` — lists any `agent/...` PRs that failed to auto-merge.
+
+If a request changes product definition but no main PRD or feature brief is supplied, planning should stop and require `/prd` first.
 
 For ad-hoc interactive work, just edit and stop: the Stop hook verifies,
 commits, pushes, and (on a feature branch) auto-merges for you.
@@ -64,16 +95,25 @@ Each task is a markdown file under `.agent-tasks/` and moves through states:
 - `failed/` — verification failed, worker errored, or no changes
 
 Start from `.agent-tasks/active/TASK-template.md`. Every task must specify:
-goal, scope, allowed files, forbidden files, acceptance criteria, verification
-commands, branch (`agent/...`), and base branch.
+work type, requirements source, parent PRD (or `N/A` for direct issue work),
+parent brief (or `N/A` unless planning from a feature brief), goal, scope,
+allowed files, forbidden files, acceptance criteria, verification commands,
+branch (`agent/...`), and base branch.
 
 ## Planning
 
 Complex work is planned before implementation.
 
+- The main product document lives in `docs/prd/active/PRD-001.md`.
+- Feature briefs live in `docs/prd/changes/active/` and may later move to `docs/prd/changes/completed/`.
+- `docs/prd/completed/` is reserved for rare cases where the main PRD itself is retired or replaced.
 - Execution plans live in `docs/exec-plans/active/` (and `completed/`).
 - Task files live in `.agent-tasks/active/`.
 - Run logs and summaries live in `.agent-runs/`.
+
+When a PRD or feature brief exists for the work, treat it as the single source of truth for
+product intent. The planner must read the applicable product document before generating EPIC or TASK
+artifacts, and must not invent unsupported product requirements.
 
 ## Before finishing any change
 

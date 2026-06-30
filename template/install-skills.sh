@@ -72,6 +72,7 @@ install_skill() {
 # Skills → ~/.claude/skills/
 # ==============================================
 ALL_SKILLS=(
+  agent-product-consultant
   agent-planner
   agent-worker
   agent-reviewer

@@ -68,20 +68,75 @@ cd /path/to/your-project
 
 ## 使用方式
 
-### A. 编排器（结构化多任务）
+### A. 主产品路线：先主 PRD，再规划
+
+适用于：
+- 新项目从 idea 开始
+- 大功能
+- 改变产品目标、目标用户、核心流程、MVP 范围、非目标、第一性原则
 
 ```bash
-python orchestrator/agent-team.py plan    "add user authentication"   # 规划：生成 EPIC + TASK 文件
-python orchestrator/agent-team.py run     TASK-001                    # 执行：worktree → 验证 → 提交 → 推送 → PR → 自动合并
-python orchestrator/agent-team.py status                              # 查看各状态任务数
-python orchestrator/agent-team.py integrate                           # 列出未自动合并的 agent/ PR
+# 1. 先用 /prd 创建或更新主 PRD
+#    主 PRD 会写到 docs/prd/active/PRD-001.md
+
+# 2. 再基于主 PRD 生成 EPIC + TASK
+python orchestrator/agent-team.py plan --from-prd docs/prd/active/PRD-001.md
+
+# 3. 执行任务
+python orchestrator/agent-team.py run TASK-001
+python orchestrator/agent-team.py status
 ```
 
-在 Claude Code 里也可以用 slash 命令：`/plan`、`/run`、`/status`、`/integrate`。
+### B. 局部产品变更路线：先 feature brief，再规划
+
+适用于：
+- 附加功能
+- 中等复杂度新能力
+- 局部产品增强
+- 不应重写主 PRD 的产品变更
+
+```bash
+# 1. 先用 /prd 生成或更新 feature brief
+#    feature brief 会写到 docs/prd/changes/active/FEATURE-XXX.md
+
+# 2. 再基于 feature brief 规划
+python orchestrator/agent-team.py plan --from-brief docs/prd/changes/active/FEATURE-001.md
+
+# 3. 执行任务
+python orchestrator/agent-team.py run TASK-001
+python orchestrator/agent-team.py status
+```
+
+在 Claude Code CLI 里推荐的用户路径是：
+
+```text
+/prd   创建或更新主 PRD，或生成 feature brief
+/plan  从主 PRD、feature brief 或 direct issue 生成 EPIC/TASK
+/run   执行 TASK
+/status 查看状态
+```
+
+### C. 问题修复路线：直接规划
+
+适用于：
+- bugfix
+- 小修
+- 样式 / 文案修复
+- 局部性能优化
+- 不改变产品行为的重构
+- 补测试
+
+```bash
+python orchestrator/agent-team.py plan "fix login button not responding"
+python orchestrator/agent-team.py run TASK-001
+python orchestrator/agent-team.py status
+```
+
+如果请求看起来像产品层变化，但没有主 PRD 或 feature brief，planner 应该拒绝继续，并提示先 `/prd`。
 
 `run TASK-001` 的流程：创建 `agent/...` 分支的 worktree → 无头 Claude 执行任务 → 跑验证（失败则任务进 `failed`）→ 提交 → 推送 → `gh pr create` → `gh pr merge --squash` → 任务进 `completed`。全过程记录在 `.agent-runs/`。
 
-### B. Stop hook（临时编辑）
+### C. Stop hook（临时编辑）
 
 最简单的方式：直接在 Claude Code 里改代码，然后停止。Stop hook 会自动完成验证、提交、推送、合并。验证失败时它会拦住停止，把你「打回去」继续修直到通过。
 
@@ -107,12 +162,23 @@ your-project/
 ├── .claude/
 │   ├── settings.json           # bypassPermissions + Stop hook
 │   ├── hooks/stop-auto-pr.py   # 自动验证、提交、合并
-│   └── commands/               # /plan /run /status /integrate
+│   └── commands/               # /prd /plan /run /status /integrate
 ├── .agent-tasks/               # active/ running/ completed/ failed/
 ├── .agent-runs/                # 运行日志（JSONL + 摘要）
-├── docs/exec-plans/            # EPIC 执行计划
+├── docs/
+│   ├── prd/
+│   │   ├── active/             # 主 PRD（长期维护）
+│   │   ├── completed/          # 主 PRD 退役/替换时预留
+│   │   └── changes/
+│   │       ├── active/         # feature briefs / 小 PRD
+│   │       └── completed/      # 已完成的 feature briefs
+│   └── exec-plans/             # 工程规划层（EPIC）
+│       ├── active/
+│       └── completed/
 └── install-skills.sh           # skills 安装脚本
 ```
+
+`docs/prd/active/PRD-001.md` 是**主 PRD**，代表项目的第一性原则与长期产品定义。`docs/prd/changes/active/FEATURE-XXX.md` 是**小 PRD / feature brief**，用于附加功能和局部产品变化。`docs/exec-plans/` 则是工程规划层。
 
 ## 内置 Skills
 
@@ -120,7 +186,8 @@ your-project/
 
 | Skill | 作用 |
 |-------|------|
-| `agent-planner` | 把复杂需求拆解为 EPIC + 多个有界的 TASK |
+| `agent-product-consultant` | 维护主 PRD，或为局部产品变更生成 feature brief，不做工程拆解 |
+| `agent-planner` | 把 PRD 或问题说明拆解为 EPIC + 多个有界的 TASK |
 | `agent-worker` | 在 worktree 里只执行被指派的单个任务 |
 | `agent-reviewer` | 合并前审查（autopilot 下最后一道防线） |
 | `agent-integrator` | 多任务 EPIC 的整体追踪与冲突排查 |
@@ -152,7 +219,7 @@ hook 与编排器按以下顺序探测（来自 `package.json` / Python 工具�
 ```bash
 rm -rf .claude orchestrator lib .agent-tasks .agent-runs docs/exec-plans install-skills.sh
 # 再删除 CLAUDE.md 中 <!-- agent-env-template ... --> 之间的 profile 块
-rm -rf ~/.claude/skills/{agent-planner,agent-worker,agent-reviewer,agent-integrator,gh-fix-ci}
+rm -rf ~/.claude/skills/{agent-product-consultant,agent-planner,agent-worker,agent-reviewer,agent-integrator,gh-fix-ci}
 ```
 
 ## 开发此模板

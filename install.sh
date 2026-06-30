@@ -132,16 +132,21 @@ Next steps:
   1. Confirm GitHub CLI authentication:
      gh auth status
 
-  2. Plan work (autopilot — no confirmation prompts, auto-merges on success):
-     python orchestrator/agent-team.py plan "Describe the requirement"
+  2. Define product work:
+     /prd <idea-or-product-change>
 
-  3. Run a task (auto-verifies, commits, pushes, opens PR, and merges):
+  3. Plan engineering work:
+     python orchestrator/agent-team.py plan --from-prd docs/prd/active/PRD-001.md
+     # or: python orchestrator/agent-team.py plan --from-brief docs/prd/changes/active/FEATURE-001.md
+     # or: python orchestrator/agent-team.py plan "Fix login button not responding"
+
+  4. Run a task (auto-verifies, commits, pushes, opens PR, and merges):
      python orchestrator/agent-team.py run TASK-001
 
-  4. Or just edit files and stop — the Stop hook handles the rest.
+  5. Or just edit files and stop — the Stop hook handles the rest.
 
-Installed skills: agent-planner, agent-worker, agent-reviewer,
-  agent-integrator, gh-fix-ci
+Installed skills: agent-product-consultant, agent-planner,
+  agent-worker, agent-reviewer, agent-integrator, gh-fix-ci
 
 Mode: autopilot
   - Permissions: bypassPermissions (no confirmation prompts)

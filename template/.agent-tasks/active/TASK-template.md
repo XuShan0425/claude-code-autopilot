@@ -1,5 +1,21 @@
 # TASK-template
 
+## Work Type
+
+- Work type: `product | feature | issue`
+
+## Requirements Source
+
+- Source: `direct request | docs/prd/active/PRD-001.md | docs/prd/changes/active/FEATURE-001.md`
+
+## Parent PRD
+
+- PRD: `N/A`
+
+## Parent Brief
+
+- Brief: `N/A`
+
 ## Parent Epic
 
 - Epic: `EPIC-001`

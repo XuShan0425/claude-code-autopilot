@@ -232,6 +232,274 @@ class OrchestratorTests(unittest.TestCase):
         self.assertEqual(cmds[0].args, ["npm", "test"])
         self.assertEqual(cmds[1].args, ["ruff", "check", "."])
 
+    def test_plan_parser_supports_from_prd(self) -> None:
+        spec = importlib.util.spec_from_file_location(
+            "agent_team",
+            str(TEMPLATE_DIR / "orchestrator" / "agent-team.py"),
+        )
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules["agent_team"] = mod
+        spec.loader.exec_module(mod)  # type: ignore[union-attr]
+        parser = mod.build_parser()
+        args = parser.parse_args(["plan", "--from-prd", "docs/prd/active/PRD-001.md"])
+        self.assertEqual(args.command, "plan")
+        self.assertEqual(args.from_prd, "docs/prd/active/PRD-001.md")
+        self.assertIsNone(args.requirement)
+
+    def test_plan_parser_supports_from_brief(self) -> None:
+        spec = importlib.util.spec_from_file_location(
+            "agent_team",
+            str(TEMPLATE_DIR / "orchestrator" / "agent-team.py"),
+        )
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules["agent_team"] = mod
+        spec.loader.exec_module(mod)  # type: ignore[union-attr]
+        parser = mod.build_parser()
+        args = parser.parse_args(["plan", "--from-brief", "docs/prd/changes/active/FEATURE-001.md"])
+        self.assertEqual(args.command, "plan")
+        self.assertEqual(args.from_brief, "docs/prd/changes/active/FEATURE-001.md")
+        self.assertIsNone(args.requirement)
+
+    def test_plan_parser_still_supports_direct_issue(self) -> None:
+        spec = importlib.util.spec_from_file_location(
+            "agent_team",
+            str(TEMPLATE_DIR / "orchestrator" / "agent-team.py"),
+        )
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules["agent_team"] = mod
+        spec.loader.exec_module(mod)  # type: ignore[union-attr]
+        parser = mod.build_parser()
+        args = parser.parse_args(["plan", "fix login button not responding"])
+        self.assertEqual(args.command, "plan")
+        self.assertEqual(args.requirement, "fix login button not responding")
+        self.assertIsNone(args.from_prd)
+
+    def test_classify_plan_input_routes_issue_and_product_work(self) -> None:
+        spec = importlib.util.spec_from_file_location(
+            "agent_team",
+            str(TEMPLATE_DIR / "orchestrator" / "agent-team.py"),
+        )
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules["agent_team"] = mod
+        spec.loader.exec_module(mod)  # type: ignore[union-attr]
+        self.assertEqual(mod.classify_plan_input("fix login button not responding"), "direct_issue")
+        self.assertEqual(mod.classify_plan_input("新增团队邀请功能"), "requires_prd")
+
+    def test_classify_prd_request_routes_main_brief_and_issue(self) -> None:
+        spec = importlib.util.spec_from_file_location(
+            "agent_team",
+            str(TEMPLATE_DIR / "orchestrator" / "agent-team.py"),
+        )
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules["agent_team"] = mod
+        spec.loader.exec_module(mod)  # type: ignore[union-attr]
+        self.assertEqual(mod.classify_prd_request("修复登录按钮无响应", has_main_prd=True), "direct_issue")
+        self.assertEqual(mod.classify_prd_request("修改产品目标和目标用户", has_main_prd=True), "main_prd")
+        self.assertEqual(mod.classify_prd_request("新增团队邀请功能", has_main_prd=True), "feature_brief")
+        self.assertEqual(mod.classify_prd_request("我要做一个新项目", has_main_prd=False), "main_prd")
+
+    def test_resolve_latest_prd_prefers_newest(self) -> None:
+        spec = importlib.util.spec_from_file_location(
+            "agent_team",
+            str(TEMPLATE_DIR / "orchestrator" / "agent-team.py"),
+        )
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules["agent_team"] = mod
+        spec.loader.exec_module(mod)  # type: ignore[union-attr]
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "docs" / "prd" / "active").mkdir(parents=True)
+            old = root / "docs" / "prd" / "active" / "PRD-001.md"
+            new = root / "docs" / "prd" / "active" / "PRD-002.md"
+            old.write_text("old", encoding="utf-8")
+            new.write_text("new", encoding="utf-8")
+            os.utime(old, (1, 1))
+            os.utime(new, (2, 2))
+            self.assertEqual(mod.resolve_latest_prd(root), old)
+            self.assertEqual(mod.resolve_main_prd(root), old)
+
+    def test_resolve_prd_reference_supports_id_and_repo_relative_path(self) -> None:
+        spec = importlib.util.spec_from_file_location(
+            "agent_team",
+            str(TEMPLATE_DIR / "orchestrator" / "agent-team.py"),
+        )
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules["agent_team"] = mod
+        spec.loader.exec_module(mod)  # type: ignore[union-attr]
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            prd = root / "docs" / "prd" / "active" / "PRD-001.md"
+            prd.parent.mkdir(parents=True)
+            prd.write_text("demo", encoding="utf-8")
+            self.assertEqual(mod.resolve_prd_reference(root, "PRD-001"), prd.resolve())
+            self.assertEqual(mod.resolve_prd_reference(root, "docs/prd/active/PRD-001.md"), prd.resolve())
+
+    def test_resolve_feature_brief_reference_supports_id_and_repo_relative_path(self) -> None:
+        spec = importlib.util.spec_from_file_location(
+            "agent_team",
+            str(TEMPLATE_DIR / "orchestrator" / "agent-team.py"),
+        )
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules["agent_team"] = mod
+        spec.loader.exec_module(mod)  # type: ignore[union-attr]
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            brief = root / "docs" / "prd" / "changes" / "active" / "FEATURE-001.md"
+            brief.parent.mkdir(parents=True)
+            brief.write_text("demo", encoding="utf-8")
+            self.assertEqual(mod.resolve_feature_brief_reference(root, "FEATURE-001"), brief.resolve())
+            self.assertEqual(mod.resolve_feature_brief(root, "FEATURE-001"), brief.resolve())
+            self.assertEqual(mod.resolve_feature_brief_reference(root, "docs/prd/changes/active/FEATURE-001.md"), brief.resolve())
+
+    def test_ensure_dirs_creates_prd_directories(self) -> None:
+        spec = importlib.util.spec_from_file_location(
+            "agent_team",
+            str(TEMPLATE_DIR / "orchestrator" / "agent-team.py"),
+        )
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules["agent_team"] = mod
+        spec.loader.exec_module(mod)  # type: ignore[union-attr]
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            mod.ensure_dirs(root)
+            self.assertTrue((root / "docs" / "prd" / "active").is_dir())
+            self.assertTrue((root / "docs" / "prd" / "completed").is_dir())
+            self.assertTrue((root / "docs" / "prd" / "changes" / "active").is_dir())
+            self.assertTrue((root / "docs" / "prd" / "changes" / "completed").is_dir())
+
+    def test_archive_feature_brief_if_complete_moves_file(self) -> None:
+        spec = importlib.util.spec_from_file_location(
+            "agent_team",
+            str(TEMPLATE_DIR / "orchestrator" / "agent-team.py"),
+        )
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules["agent_team"] = mod
+        spec.loader.exec_module(mod)  # type: ignore[union-attr]
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            brief = root / "docs" / "prd" / "changes" / "active" / "FEATURE-001.md"
+            brief.parent.mkdir(parents=True)
+            (root / ".agent-tasks" / "completed").mkdir(parents=True)
+            brief.write_text("demo", encoding="utf-8")
+            archived = mod.archive_feature_brief_if_complete(root, brief, note="done")
+            self.assertIsNotNone(archived)
+            self.assertFalse(brief.exists())
+            self.assertTrue((root / "docs" / "prd" / "changes" / "completed" / "FEATURE-001.md").exists())
+
+    def test_archive_feature_brief_if_complete_skips_main_prd(self) -> None:
+        spec = importlib.util.spec_from_file_location(
+            "agent_team",
+            str(TEMPLATE_DIR / "orchestrator" / "agent-team.py"),
+        )
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules["agent_team"] = mod
+        spec.loader.exec_module(mod)  # type: ignore[union-attr]
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            prd = root / "docs" / "prd" / "active" / "PRD-001.md"
+            prd.parent.mkdir(parents=True)
+            prd.write_text("demo", encoding="utf-8")
+            archived = mod.archive_feature_brief_if_complete(root, prd)
+            self.assertIsNone(archived)
+            self.assertTrue(prd.exists())
+
+    def test_archive_feature_brief_if_complete_skips_when_open_tasks_exist(self) -> None:
+        spec = importlib.util.spec_from_file_location(
+            "agent_team",
+            str(TEMPLATE_DIR / "orchestrator" / "agent-team.py"),
+        )
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules["agent_team"] = mod
+        spec.loader.exec_module(mod)  # type: ignore[union-attr]
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            brief = root / "docs" / "prd" / "changes" / "active" / "FEATURE-001.md"
+            brief.parent.mkdir(parents=True)
+            task_dir = root / ".agent-tasks" / "active"
+            task_dir.mkdir(parents=True)
+            brief.write_text("demo", encoding="utf-8")
+            (task_dir / "TASK-001.md").write_text("## Parent Brief\n\n- Brief: `docs/prd/changes/active/FEATURE-001.md`\n", encoding="utf-8")
+            archived = mod.archive_feature_brief_if_complete(root, brief)
+            self.assertIsNone(archived)
+            self.assertTrue(brief.exists())
+
+    def test_task_template_contains_parent_prd(self) -> None:
+        text = (TEMPLATE_DIR / ".agent-tasks" / "active" / "TASK-template.md").read_text(encoding="utf-8")
+        self.assertIn("## Work Type", text)
+        self.assertIn("product | feature | issue", text)
+        self.assertIn("## Requirements Source", text)
+        self.assertIn("## Parent PRD", text)
+        self.assertIn("- PRD: `N/A`", text)
+        self.assertIn("## Parent Brief", text)
+        self.assertIn("- Brief: `N/A`", text)
+
+    def test_main_prd_prompt_contains_single_source_of_truth_language(self) -> None:
+        spec = importlib.util.spec_from_file_location(
+            "agent_team",
+            str(TEMPLATE_DIR / "orchestrator" / "agent-team.py"),
+        )
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules["agent_team"] = mod
+        spec.loader.exec_module(mod)  # type: ignore[union-attr]
+        prompt = mod.build_main_prd_plan_prompt("demo prd", "docs/prd/active/PRD-001.md", "EPIC-001")
+        self.assertIn("single source of truth", prompt)
+        self.assertIn("Work Type `product`", prompt)
+
+    def test_feature_brief_prompt_mentions_parent_prd(self) -> None:
+        spec = importlib.util.spec_from_file_location(
+            "agent_team",
+            str(TEMPLATE_DIR / "orchestrator" / "agent-team.py"),
+        )
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules["agent_team"] = mod
+        spec.loader.exec_module(mod)  # type: ignore[union-attr]
+        prompt = mod.build_feature_brief_plan_prompt(
+            "main prd",
+            "docs/prd/active/PRD-001.md",
+            "brief",
+            "docs/prd/changes/active/FEATURE-001.md",
+            "EPIC-001",
+        )
+        self.assertIn("parent PRD", prompt)
+        self.assertIn("Work Type `feature`", prompt)
+
+    def test_issue_prompt_does_not_require_prd_ancestry(self) -> None:
+        spec = importlib.util.spec_from_file_location(
+            "agent_team",
+            str(TEMPLATE_DIR / "orchestrator" / "agent-team.py"),
+        )
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules["agent_team"] = mod
+        spec.loader.exec_module(mod)  # type: ignore[union-attr]
+        prompt = mod.build_issue_plan_prompt("fix login button not responding", "EPIC-001")
+        self.assertIn("No PRD or feature brief is required for this route", prompt)
+        self.assertIn("Work Type `issue`", prompt)
+
+    def test_validate_task_traceability_rejects_missing_feature_brief(self) -> None:
+        spec = importlib.util.spec_from_file_location(
+            "agent_team",
+            str(TEMPLATE_DIR / "orchestrator" / "agent-team.py"),
+        )
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules["agent_team"] = mod
+        spec.loader.exec_module(mod)  # type: ignore[union-attr]
+        text = """## Work Type\n\n- Work type: `feature`\n\n## Requirements Source\n\n- Source: `docs/prd/changes/active/FEATURE-001.md`\n\n## Parent PRD\n\n- PRD: `docs/prd/active/PRD-001.md`\n\n## Parent Brief\n\n- Brief: `N/A`\n\n## Parent Epic\n\n- Epic: `EPIC-001`\n\n## Branch\n\nBranch: `agent/TASK-001-demo`\n\n## Base Branch\n\nBase branch: `main`\n"""
+        with self.assertRaises(core.AgentError) as ctx:
+            mod.validate_task_traceability(text)
+        self.assertIn("Feature tasks must set Parent Brief", str(ctx.exception))
+
+    def test_validate_task_traceability_accepts_issue_without_prd(self) -> None:
+        spec = importlib.util.spec_from_file_location(
+            "agent_team",
+            str(TEMPLATE_DIR / "orchestrator" / "agent-team.py"),
+        )
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules["agent_team"] = mod
+        spec.loader.exec_module(mod)  # type: ignore[union-attr]
+        text = """## Work Type\n\n- Work type: `issue`\n\n## Requirements Source\n\n- Source: `direct request`\n\n## Parent PRD\n\n- PRD: `N/A`\n\n## Parent Brief\n\n- Brief: `N/A`\n\n## Parent Epic\n\n- Epic: `EPIC-001`\n\n## Branch\n\nBranch: `agent/TASK-001-demo`\n\n## Base Branch\n\nBase branch: `main`\n"""
+        metadata = mod.validate_task_traceability(text)
+        self.assertEqual(metadata["work_type"], "issue")
+
 
 # =================================================================== #
 # install.sh (dry-run)
