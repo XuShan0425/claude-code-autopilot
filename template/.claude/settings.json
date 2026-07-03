@@ -3,6 +3,23 @@
     "defaultMode": "bypassPermissions"
   },
   "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python",
+            "args": [
+              "${CLAUDE_PROJECT_DIR}/.claude/hooks/context_graph_hook.py",
+              "post-tool-use"
+            ],
+            "timeout": 30,
+            "statusMessage": "Updating context graph"
+          }
+        ]
+      }
+    ],
     "Stop": [
       {
         "hooks": [
@@ -11,6 +28,20 @@
             "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/stop-auto-pr.py\"",
             "timeout": 1200,
             "statusMessage": "Verifying, committing, and auto-merging"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python",
+            "args": [
+              "${CLAUDE_PROJECT_DIR}/.claude/hooks/context_graph_hook.py",
+              "stop"
+            ],
+            "timeout": 60,
+            "statusMessage": "Sweeping changed files"
           }
         ]
       }

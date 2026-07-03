@@ -131,4 +131,5 @@ artifacts, and must not invent unsupported product requirements.
 - Preserve architecture boundaries and existing style.
 - Validate external data at boundaries.
 - Prefer shared utilities (`lib/agent_core.py`) over one-off helpers.
+- Before finishing a change, run `/context` to surface files the change-graph flags as related (docs, tests, config that may need matching updates).
 - Never hide failing tests or claim verification passed when it did not run.
