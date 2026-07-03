@@ -14,6 +14,7 @@ cd /path/to/your-project
 
 - **Stop hook**——你在 Claude Code 里改完代码一停止，它就自动：验证 → 提交 → 推送 → 开 PR → 合并。
 - **编排器**——把一个大需求拆成 EPIC + 多个 TASK，每个任务在独立 git worktree 里无人值守地执行并自动合并。
+- **上下文图**——`/context` 根据当前改动提示「还可能要同步哪些文件」（命令 / 配置 / 文档 / 测试之间的轻量关系）。
 - **唯一的门是验证**：探测到的 lint / typecheck / test 必须通过才允许合并。
 - **唯一的护栏是密钥**：`.env*`、`secrets/`、路径含 `secret` / `token` 的文件永远拒绝提交。
 - 零依赖：纯文件 + Python 3 + Git worktree + GitHub CLI。
@@ -110,10 +111,12 @@ python orchestrator/agent-team.py status
 在 Claude Code CLI 里推荐的用户路径是：
 
 ```text
-/prd   创建或更新主 PRD，或生成 feature brief
-/plan  从主 PRD、feature brief 或 direct issue 生成 EPIC/TASK
-/run   执行 TASK
-/status 查看状态
+/prd       创建或更新主 PRD，或生成 feature brief
+/plan      从主 PRD、feature brief 或 direct issue 生成 EPIC/TASK
+/run       执行 TASK
+/status    查看状态
+/integrate 排查未自动合并的 agent/ PR
+/context   查询上下文图：当前改动可能牵连哪些文件
 ```
 
 ### C. 问题修复路线：直接规划
@@ -136,9 +139,19 @@ python orchestrator/agent-team.py status
 
 `run TASK-001` 的流程：创建 `agent/...` 分支的 worktree → 无头 Claude 执行任务 → 跑验证（失败则任务进 `failed`）→ 提交 → 推送 → `gh pr create` → `gh pr merge --squash` → 任务进 `completed`。全过程记录在 `.agent-runs/`。
 
-### C. Stop hook（临时编辑）
+### D. Stop hook（临时编辑）
 
 最简单的方式：直接在 Claude Code 里改代码，然后停止。Stop hook 会自动完成验证、提交、推送、合并。验证失败时它会拦住停止，把你「打回去」继续修直到通过。
+
+同一时刻还会跑一个轻量的**上下文图 hook**：首次 Stop 全量建索引，之后只按 git diff 增量更新，并在有「关联文件待复核」时给你一条提示（见下）。
+
+### E. 上下文图（/context）
+
+`context_graph_hook.py` 在每次 `Write|Edit` 和 `Stop` 时维护一张轻量关系图（`.context-graph/`，已 gitignore），记录「改了某文件 → 哪些文件可能要同步」（例如改 `src/commands/` 下的文件会标记 `README.md` 和 `tests/`）。
+
+- **首次** Stop 跑全量索引；**之后**只重扫 git diff 里的文件（已提交增量 + 工作区 + 未跟踪），删除的文件清掉对应卡片。
+- `/context [path]` 主动查询：无参数看当前 diff 牵连的文件；给路径看该文件的相关文件。
+- 收尾前跑一下 `/context`，把图标记出的文档 / 测试 / 配置一并更新，再过验证。
 
 ## 任务文件
 
@@ -160,11 +173,13 @@ your-project/
 ├── orchestrator/agent-team.py  # plan / run / status / integrate
 ├── lib/agent_core.py           # hook 与 orchestrator 的共享逻辑
 ├── .claude/
-│   ├── settings.json           # bypassPermissions + Stop hook
+│   ├── settings.json           # bypassPermissions + Stop/PostToolUse hook
 │   ├── hooks/stop-auto-pr.py   # 自动验证、提交、合并
-│   └── commands/               # /prd /plan /run /status /integrate
+│   ├── hooks/context_graph_hook.py  # 上下文图：增量索引 + /context
+│   └── commands/               # /prd /plan /run /status /integrate /context
 ├── .agent-tasks/               # active/ running/ completed/ failed/
 ├── .agent-runs/                # 运行日志（JSONL + 摘要）
+├── .context-graph/             # 上下文图运行时产物（已 gitignore）
 ├── docs/
 │   ├── prd/
 │   │   ├── active/             # 主 PRD（长期维护）
@@ -227,5 +242,8 @@ rm -rf ~/.claude/skills/{agent-product-consultant,agent-planner,agent-worker,age
 本仓库自身就是模板源码。跑测试：
 
 ```bash
-python template/tests/test_stop_auto_pr.py
+python template/tests/test_stop_auto_pr.py      # core + hook + orchestrator（35）
+python template/tests/test_context_graph.py     # 上下文图 hook（16）
+# 或一次性跑全部（51）：
+python -m unittest discover -s template/tests
 ```
