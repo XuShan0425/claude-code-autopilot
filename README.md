@@ -3,7 +3,7 @@
 > 把 Claude Code 安装进你的项目工作流：规划、执行、验证、提交、推送、PR、合并，全部自动化。
 
 ```bash
-git clone git@github.com:XuShan0425/-.git /tmp/agent-template
+git clone git@github.com:XuShan0425/claude-code-autopilot.git /tmp/agent-template
 cd /path/to/your-project
 /tmp/agent-template/install.sh --profile generic
 ```
@@ -33,7 +33,7 @@ cd /path/to/your-project
 
 ```bash
 # 1. 获取模板源码
-git clone git@github.com:XuShan0425/-.git /tmp/agent-template
+git clone git@github.com:XuShan0425/claude-code-autopilot.git /tmp/agent-template
 
 # 2. 进入你的项目
 cd /path/to/your-project
@@ -249,4 +249,54 @@ python template/tests/test_stop_auto_pr.py      # core + hook + orchestrator（3
 python template/tests/test_context_graph.py     # 上下文图 hook（16）
 # 或一次性跑全部（51）：
 python -m unittest discover -s template/tests
+```
+
+## 当前开发进度
+
+截至 2026-08-29，模板的核心自动驾驶链路已完成并可用：
+
+- **产品规划**：支持主 PRD、feature brief，以及从需求文档生成 EPIC/TASK。
+- **任务执行**：支持在独立 worktree 中运行任务、自动验证、提交、推送、创建 PR 和 squash merge。
+- **自动化收尾**：Stop hook 会执行验证、密钥路径拦截和自动合并；未通过验证的任务会被阻止合并。
+- **上下文维护**：上下文图支持首次全量索引、后续按 diff 增量更新、删除清理和 `/context` 查询。
+- **文档与测试**：README、命令文档和 51 项 Python unittest 已覆盖当前主要流程。
+
+本仓库是**模板项目**而不是业务应用，因此当前重点是稳定安装器、hook、编排器和 Claude Code 命令的协作流程。当前已知边界：验证命令依赖目标项目自身配置；如果未探测到验证命令，流程会直接放行，建议在任务文件中显式填写 `Verification Commands`。默认 `bypassPermissions` 和自动合并行为也应先在测试分支验证后再用于生产仓库。
+
+### 本地验证结果
+
+在本次 README 更新前后，建议执行以下检查：
+
+```bash
+python -B -m unittest discover -s template/tests -v
+bash -n install.sh
+bash -n template/install-skills.sh
+```
+
+预期结果为 51 项 unittest 全部通过，两个 Bash 安装脚本通过语法检查。
+
+## Windows 上更新 Codex CLI
+
+如果直接执行官方命令时出现：
+
+```text
+无法将“Get-FileHash”项识别为 cmdlet、函数、脚本文件或可运行程序
+```
+
+这是当前 Windows PowerShell 会话没有自动加载 `Microsoft.PowerShell.Utility` 模块导致的，不是 Codex 版本或项目配置错误。可以使用仓库提供的兼容入口：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\update-codex.ps1
+```
+
+该脚本会显式加载 `Microsoft.PowerShell.Utility`，确认 `Get-FileHash` 可用后再执行官方安装脚本。修复也可以直接通过一条命令完成：
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command '$env:CODEX_NON_INTERACTIVE="1"; Import-Module Microsoft.PowerShell.Utility -Force; irm https://chatgpt.com/codex/install.ps1 | iex'
+```
+
+更新完成后请打开一个新的 PowerShell 窗口，并确认版本：
+
+```powershell
+codex --version
 ```
