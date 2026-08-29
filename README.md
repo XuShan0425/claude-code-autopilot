@@ -207,6 +207,9 @@ your-project/
 | `agent-reviewer` | 合并前审查（autopilot 下最后一道防线） |
 | `agent-integrator` | 多任务 EPIC 的整体追踪与冲突排查 |
 | `gh-fix-ci` | 用 `gh` 诊断并修复失败的 GitHub Actions 检查 |
+| `gh-address-comments` | 汇总并处理当前 PR 的 review / issue 评论 |
+| `find-skills` | 搜索可复用的 Claude Code 技能 |
+| `auto-skill-installer` | 根据自然语言需求发现并安装技能 |
 
 ## Autopilot 行为与护栏
 
@@ -234,7 +237,7 @@ hook 与编排器按以下顺序探测（来自 `package.json` / Python 工具�
 ```bash
 rm -rf .claude orchestrator lib .agent-tasks .agent-runs docs/exec-plans install-skills.sh
 # 再删除 CLAUDE.md 中 <!-- agent-env-template ... --> 之间的 profile 块
-rm -rf ~/.claude/skills/{agent-product-consultant,agent-planner,agent-worker,agent-reviewer,agent-integrator,gh-fix-ci}
+rm -rf ~/.claude/skills/{agent-product-consultant,agent-planner,agent-worker,agent-reviewer,agent-integrator,gh-fix-ci,gh-address-comments,find-skills,auto-skill-installer}
 ```
 
 ## 开发此模板
