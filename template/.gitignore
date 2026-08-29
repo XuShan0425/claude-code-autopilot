@@ -1,5 +1,24 @@
+# Secrets and local environment files
+.env
+.env.*
+!.env.example
+secrets/
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Build outputs and dependencies
+node_modules/
+dist/
+build/
+coverage/
+.DS_Store
+
 # Context graph runtime artifacts
 .context-graph/
+.agent-runs/
+.agent-tasks/running/
 
 # Python bytecode / caches
 __pycache__/

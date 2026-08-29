@@ -115,7 +115,7 @@ python orchestrator/agent-team.py status
 /plan      从主 PRD、feature brief 或 direct issue 生成 EPIC/TASK
 /run       执行 TASK
 /status    查看状态
-/integrate 排查未自动合并的 agent/ PR
+/integrate 排查未自动合并的 topic PR
 /context   查询上下文图：当前改动可能牵连哪些文件
 ```
 
@@ -137,7 +137,7 @@ python orchestrator/agent-team.py status
 
 如果请求看起来像产品层变化，但没有主 PRD 或 feature brief，planner 应该拒绝继续，并提示先 `/prd`。
 
-`run TASK-001` 的流程：创建 `agent/...` 分支的 worktree → 无头 Claude 执行任务 → 跑验证（失败则任务进 `failed`）→ 提交 → 推送 → `gh pr create` → `gh pr merge --squash` → 任务进 `completed`。全过程记录在 `.agent-runs/`。
+`run TASK-001` 的流程：先获取最新 base 分支，创建 `feature/...`、`fix/...`、`refactor/...` 或 `chore/...` 分支的 worktree → 无头 Claude 执行任务 → 跑验证（失败则任务进 `failed`）→ rebase 到最新 base → 使用 Conventional Commit 提交 → 推送 → `gh pr create` → `gh pr merge --squash` → 清理 worktree 和本地分支 → 任务进 `completed`。全过程记录在 `.agent-runs/`。
 
 ### D. Stop hook（临时编辑）
 
@@ -160,7 +160,7 @@ python orchestrator/agent-team.py status
 - **Goal / Scope / Acceptance Criteria**：明确要做什么
 - **Allowed Files / Forbidden Files**：worker 只允许动 Allowed 里的文件
 - **Verification Commands**：合并前的门；不填则用自动探测到的命令
-- **Branch**：`agent/...`
+- **Branch**：`feature/...`、`fix/...`、`refactor/...` 或 `chore/...`
 - **Base branch**：合并目标，默认 `main`
 
 任务状态：`active` → `running` → `completed`（或 `failed`）。
@@ -217,7 +217,7 @@ your-project/
 |----|------|
 | 权限 | `bypassPermissions`，无确认弹窗 |
 | 合并 | 验证通过即 `squash` merge，**可合并进 main** |
-| 分支 | 任务统一用 `agent/...` 前缀 |
+| 分支 | 任务使用 `feature/...`、`fix/...`、`refactor/...` 或 `chore/...` 前缀 |
 | 质量门 | 探测到的 lint / typecheck / test 是唯一门；**探测不到命令 = 不设门** |
 | 密钥护栏 | `.env*`、`secrets/`、含 `secret` / `token` 的路径永远拦截，不可关闭 |
 

@@ -37,7 +37,7 @@ containing `secret`/`token`), stop — those are blocked by the guardrail.
 
 ## Branch
 
-Use the branch in the task file (`agent/...`). Never operate on `main` unless
+Use the branch in the task file (for example `feature/...`, `fix/...`, `refactor/...`, or `chore/...`). Never operate on `main` unless
 the task explicitly sets it as the branch.
 
 ## Verification

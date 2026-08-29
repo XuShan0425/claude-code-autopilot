@@ -333,7 +333,7 @@ Rules:
 - The EPIC must include Requirements Source `{prd_path}`, Parent PRD `{prd_path}`, Parent Brief `N/A`, and Work Type `product`.
 - Every task must set Work Type to `product`, Requirements Source to `{prd_path}`, Parent PRD to `{prd_path}`, and Parent Brief to `N/A`.
 - Each task must include parent epic, goal, scope, allowed files, forbidden files, acceptance criteria, verification commands, branch, base branch, and output requirements.
-- Use agent/... branch names.
+- Use standard topic branch names: `feature/<name>`, `fix/<name>`, `refactor/<name>`, or `chore/<name>`.
 - Keep tasks small enough to run independently in a worktree.
 - If a task touches lockfiles, schema, shared types, or auth boundaries, call out that it is unsafe for parallel execution.
 - Do not edit application code.
@@ -375,7 +375,7 @@ Rules:
 - The EPIC must include Requirements Source `{brief_path}`, Parent PRD `{main_prd_path}`, Parent Brief `{brief_path}`, and Work Type `feature`.
 - Every task must set Work Type to `feature`, Requirements Source to `{brief_path}`, Parent PRD to `{main_prd_path}`, and Parent Brief to `{brief_path}`.
 - Each task must include parent epic, goal, scope, allowed files, forbidden files, acceptance criteria, verification commands, branch, base branch, and output requirements.
-- Use agent/... branch names.
+- Use standard topic branch names: `feature/<name>`, `fix/<name>`, `refactor/<name>`, or `chore/<name>`.
 - Keep tasks small enough to run independently in a worktree.
 - If a task touches lockfiles, schema, shared types, or auth boundaries, call out that it is unsafe for parallel execution.
 - Do not edit application code.
@@ -401,7 +401,7 @@ Rules:
 - The EPIC must include Requirements Source `direct request`, Parent PRD `N/A`, Parent Brief `N/A`, and Work Type `issue`.
 - Every task must set Work Type to `issue`, Requirements Source to `direct request`, Parent PRD to `N/A`, and Parent Brief to `N/A` unless an explicit product document is later supplied.
 - Each task must include parent epic, goal, scope, allowed files, forbidden files, acceptance criteria, verification commands, branch, base branch, and output requirements.
-- Use agent/... branch names.
+- Use standard topic branch names: `feature/<name>`, `fix/<name>`, `refactor/<name>`, or `chore/<name>`.
 - Keep tasks narrow, verifiable, and focused on restoring or improving the described behavior.
 - Do not edit application code.
 """.strip()
@@ -547,7 +547,29 @@ def worktree_branch_path(root: Path, branch: str) -> Path | None:
     return None
 
 
+def task_branch(metadata: dict[str, str | None], task_id: str) -> str:
+    """Resolve a task branch using the repository's public naming convention."""
+    explicit = (metadata.get("branch") or "").strip()
+    if explicit:
+        core.ensure_standard_topic_branch(explicit)
+        return explicit
+    work_type = (metadata.get("work_type") or "issue").lower()
+    prefix = {
+        "product": "feature/",
+        "feature": "feature/",
+        "issue": "fix/",
+    }.get(work_type, "chore/")
+    return prefix + core.slug(task_id)
+
+
 def ensure_worktree(root: Path, path: Path, branch: str, base_branch: str) -> None:
+    core.ensure_standard_topic_branch(branch)
+    if core.is_protected_branch(base_branch):
+        base_ref = f"origin/{base_branch}"
+    else:
+        base_ref = f"origin/{base_branch}" if core.remote_ref_exists(root, base_branch) else base_branch
+    if not core.ref_exists(root, base_ref):
+        raise core.AgentError(f"Base branch does not exist: {base_branch}")
     path.parent.mkdir(parents=True, exist_ok=True)
     inventory = worktree_inventory(root)
     resolved_path = path.resolve()
@@ -569,10 +591,6 @@ def ensure_worktree(root: Path, path: Path, branch: str, base_branch: str) -> No
             f"branch {branch} is already checked out in worktree {occupied}; refusing to reuse it"
         )
 
-    if not branch.startswith("agent/"):
-        raise core.AgentError(f"refusing to create non-agent branch: {branch}")
-
-    base_ref = f"origin/{base_branch}" if core.remote_ref_exists(root, base_branch) else base_branch
     if core.branch_exists(root, branch):
         core.run(["git", "worktree", "add", str(path), branch], root, check=True)
     else:
@@ -580,7 +598,20 @@ def ensure_worktree(root: Path, path: Path, branch: str, base_branch: str) -> No
 
 
 def commit_all(root: Path, message: str) -> str | None:
-    core.run(["git", "add", "--all", "--", "."], root, check=True)
+    core.validate_conventional_commit_subject(message)
+    core.ensure_no_sensitive_changes(root)
+    paths = [path for path in core.changed_paths(root) if not core.is_runtime_artifact(path)]
+    if not paths:
+        return None
+    core.run(["git", "add", "-A", "--", *paths], root, check=True)
+    staged = core.git_stdout(root, ["diff", "--cached", "--name-only"], check=True)
+    staged_paths = [path for path in staged.splitlines() if path]
+    sensitive_staged = [path for path in staged_paths if core.is_sensitive_path(path)]
+    if sensitive_staged:
+        raise core.AgentError(
+            "Refusing to commit sensitive staged paths:\n"
+            + "\n".join(f"- {path}" for path in sensitive_staged)
+        )
     if core.run(["git", "diff", "--cached", "--quiet"], root).returncode == 0:
         return None
     core.run(["git", "commit", "-m", message], root, check=True)
@@ -708,10 +739,8 @@ def command_run(args: argparse.Namespace) -> int:
     task_text = task_path.read_text(encoding="utf-8")
     metadata = validate_task_traceability(task_text)
     default_branch = core.detect_default_branch(root)
-    branch = metadata["branch"] or f"agent/{core.slug(task_id)}"
+    branch = task_branch(metadata, task_id)
     base_branch = metadata["base_branch"] or default_branch
-    if not branch.startswith("agent/"):
-        branch = f"agent/{core.slug(branch)}"
 
     run_id = f"{core.utc_stamp()}-{task_id}"
     running_task = move_task(root, task_path, "running", f"Started at {core.utc_stamp()} on branch `{branch}`.")
@@ -721,6 +750,7 @@ def command_run(args: argparse.Namespace) -> int:
     summary_path = root / ".agent-runs" / f"{run_id}-summary.md"
 
     try:
+        core.fetch_base_branch(root, base_branch)
         ensure_worktree(root, wt_path, branch, base_branch)
         ensure_dirs(wt_path)
         log_path = wt_path / ".agent-runs" / f"{run_id}.jsonl"
@@ -762,10 +792,22 @@ Rules:
             print(f"verification failed for {task_id}\nlog: {log_path}")
             return 1
 
+        # Sync with the latest base immediately before creating the atomic commit.
+        core.fetch_base_branch(wt_path, base_branch)
+        core.rebase_onto_base(wt_path, base_branch)
+        results, ok = core.run_verification(wt_path, commands, log_path)
+        if not ok:
+            write_summary(summary_path, f"{task_id} Failed Verification After Rebase", [f"- Log: `{relpath_text(log_path, wt_path)}`"])
+            move_task(root, running_task, "failed", f"Verification failed after rebase. Log: `{log_path}`.")
+            print(f"verification failed after rebase for {task_id}\nlog: {log_path}")
+            return 1
+
         core.ensure_origin(wt_path)
         core.ensure_gh_auth(wt_path)
 
-        commit_sha = commit_all(wt_path, f"{task_id}: agent worker changes")
+        commit_type = {"product": "feat", "feature": "feat", "issue": "fix"}.get(metadata["work_type"] or "issue", "chore")
+        commit_subject = core.conventional_commit_subject(commit_type, f"complete {task_id}")
+        commit_sha = commit_all(wt_path, commit_subject)
         if commit_sha is None:
             write_summary(summary_path, f"{task_id} Failed", [f"- Reason: `No changes were produced`", f"- Log: `{relpath_text(log_path, wt_path)}`"])
             move_task(root, running_task, "failed", "No changes were produced, so no PR was opened.")
@@ -783,6 +825,10 @@ Rules:
         )
         pr_url = core.open_or_update_pr(wt_path, branch, base_branch, f"{task_id}: agent changes", body)
         core.merge_pr(wt_path, pr_url)
+
+        # The worktree is no longer needed after the remote squash merge.
+        core.remove_worktree(root, wt_path)
+        core.delete_local_branch(root, branch)
 
         write_summary(
             summary_path,
@@ -842,11 +888,14 @@ def command_integrate(args: argparse.Namespace) -> int:
         cmd.extend(["--search", args.epic])
     result = core.run(cmd, root, check=True)
     prs = json.loads(result.stdout or "[]")
-    stuck = [pr for pr in prs if str(pr.get("headRefName", "")).startswith("agent/")]
+    stuck = [
+        pr for pr in prs
+        if any(str(pr.get("headRefName", "")).startswith(prefix) for prefix in core.STANDARD_BRANCH_PREFIXES)
+    ]
     if not stuck:
-        print("no open agent/... PRs — all tasks auto-merge on completion.")
+        print("no open topic PRs — all tasks auto-merge on completion.")
         return 0
-    print("open agent/ PRs (expected to auto-merge; these did not):")
+    print("open topic PRs (expected to auto-merge; these did not):")
     for pr in stuck:
         print(f"  #{pr['number']} {pr['title']} [{pr['headRefName']} -> {pr['baseRefName']}]")
         print(f"     {pr['url']}")
@@ -875,7 +924,7 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("status", help="show task status")
     p.set_defaults(func=command_status)
 
-    p = sub.add_parser("integrate", help="list agent/ PRs that failed to auto-merge")
+    p = sub.add_parser("integrate", help="list topic PRs that failed to auto-merge")
     p.add_argument("epic", nargs="?", help="optional epic id to search")
     p.set_defaults(func=command_integrate)
 

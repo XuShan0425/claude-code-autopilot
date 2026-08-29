@@ -1,6 +1,6 @@
 ---
 name: agent-integrator
-description: Use to oversee a multi-task EPIC where each task auto-merges independently. Detect stuck agent/ PRs, ordering or conflict risks between tasks, and verify the EPIC as a whole once its tasks land.
+description: Use to oversee a multi-task EPIC where each task auto-merges independently. Detect stuck topic PRs, ordering or conflict risks between tasks, and verify the EPIC as a whole once its tasks land.
 ---
 
 # Integrator
@@ -14,7 +14,7 @@ them.
 
 1. Read `CLAUDE.md` and the EPIC file in `docs/exec-plans/active/`.
 2. List the EPIC's tasks and their states (`python orchestrator/agent-team.py status`).
-3. Find any `agent/...` PRs that did not auto-merge
+3. Find any topic PRs that did not auto-merge
    (`python orchestrator/agent-team.py integrate EPIC-XXX`).
 4. Check dependency/ordering risks between tasks that touch overlapping files.
 5. Once all tasks are `completed`, run the project's full verification on the

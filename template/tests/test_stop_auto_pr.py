@@ -57,13 +57,50 @@ class AgentCoreTests(unittest.TestCase):
         self.assertFalse(core.is_sensitive_path("docs/readme.md"))
         self.assertFalse(core.is_sensitive_path("src/settings.py"))
 
+    def test_git_branch_and_commit_policy(self) -> None:
+        self.assertTrue(core.is_standard_topic_branch("feature/user-auth"))
+        self.assertTrue(core.is_standard_topic_branch("fix/issue-42"))
+        self.assertTrue(core.is_standard_topic_branch("refactor/api-client"))
+        self.assertTrue(core.is_standard_topic_branch("chore/add-lint"))
+        self.assertFalse(core.is_standard_topic_branch("agent/task-1"))
+        self.assertFalse(core.is_standard_topic_branch("main"))
+        self.assertFalse(core.is_standard_topic_branch("feature/"))
+        self.assertEqual(core.conventional_commit_subject("feat", "add login"), "feat: add login")
+        self.assertEqual(
+            core.conventional_commit_subject("fix", "handle crash", "auth"),
+            "fix(auth): handle crash",
+        )
+        with self.assertRaises(core.AgentError):
+            core.validate_conventional_commit_subject("TASK-001: worker changes")
+
     def test_is_runtime_artifact(self) -> None:
         self.assertTrue(core.is_runtime_artifact(".agent-runs/stop-123.jsonl"))
         self.assertTrue(core.is_runtime_artifact(".agent-runs"))
         self.assertFalse(core.is_runtime_artifact("src/app.py"))
         self.assertFalse(core.is_runtime_artifact("agent-runs/foo"))
 
-    # -- verification detection -------------------------------------- #
+    def test_force_push_is_blocked_for_protected_branch(self) -> None:
+        with mock.patch.object(core, "ensure_origin"), mock.patch.object(core, "run") as run:
+            with self.assertRaises(core.AgentError):
+                core.push_branch(Path("."), "main", force_with_lease=True)
+        run.assert_not_called()
+
+    def test_orchestrator_commit_all_checks_sensitive_paths_before_staging(self) -> None:
+        spec = importlib.util.spec_from_file_location(
+            "agent_team", str(TEMPLATE_DIR / "orchestrator" / "agent-team.py")
+        )
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules["agent_team"] = mod
+        spec.loader.exec_module(mod)  # type: ignore[union-attr]
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            with mock.patch.object(mod.core, "changed_paths", return_value=[".env.local"]), mock.patch.object(
+                mod.core, "run"
+            ) as run:
+                with self.assertRaises(core.AgentError):
+                    mod.commit_all(repo, "fix: update config")
+            run.assert_not_called()
+
 
     def test_detect_node_scripts_skipping_noop_test(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -483,7 +520,7 @@ class OrchestratorTests(unittest.TestCase):
         mod = importlib.util.module_from_spec(spec)
         sys.modules["agent_team"] = mod
         spec.loader.exec_module(mod)  # type: ignore[union-attr]
-        text = """## Work Type\n\n- Work type: `feature`\n\n## Requirements Source\n\n- Source: `docs/prd/changes/active/FEATURE-001.md`\n\n## Parent PRD\n\n- PRD: `docs/prd/active/PRD-001.md`\n\n## Parent Brief\n\n- Brief: `N/A`\n\n## Parent Epic\n\n- Epic: `EPIC-001`\n\n## Branch\n\nBranch: `agent/TASK-001-demo`\n\n## Base Branch\n\nBase branch: `main`\n"""
+        text = """## Work Type\n\n- Work type: `feature`\n\n## Requirements Source\n\n- Source: `docs/prd/changes/active/FEATURE-001.md`\n\n## Parent PRD\n\n- PRD: `docs/prd/active/PRD-001.md`\n\n## Parent Brief\n\n- Brief: `N/A`\n\n## Parent Epic\n\n- Epic: `EPIC-001`\n\n## Branch\n\nBranch: `feature/TASK-001-demo`\n\n## Base Branch\n\nBase branch: `main`\n"""
         with self.assertRaises(core.AgentError) as ctx:
             mod.validate_task_traceability(text)
         self.assertIn("Feature tasks must set Parent Brief", str(ctx.exception))
@@ -496,7 +533,7 @@ class OrchestratorTests(unittest.TestCase):
         mod = importlib.util.module_from_spec(spec)
         sys.modules["agent_team"] = mod
         spec.loader.exec_module(mod)  # type: ignore[union-attr]
-        text = """## Work Type\n\n- Work type: `issue`\n\n## Requirements Source\n\n- Source: `direct request`\n\n## Parent PRD\n\n- PRD: `N/A`\n\n## Parent Brief\n\n- Brief: `N/A`\n\n## Parent Epic\n\n- Epic: `EPIC-001`\n\n## Branch\n\nBranch: `agent/TASK-001-demo`\n\n## Base Branch\n\nBase branch: `main`\n"""
+        text = """## Work Type\n\n- Work type: `issue`\n\n## Requirements Source\n\n- Source: `direct request`\n\n## Parent PRD\n\n- PRD: `N/A`\n\n## Parent Brief\n\n- Brief: `N/A`\n\n## Parent Epic\n\n- Epic: `EPIC-001`\n\n## Branch\n\nBranch: `feature/TASK-001-demo`\n\n## Base Branch\n\nBase branch: `main`\n"""
         metadata = mod.validate_task_traceability(text)
         self.assertEqual(metadata["work_type"], "issue")
 

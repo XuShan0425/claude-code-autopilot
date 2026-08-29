@@ -24,6 +24,15 @@ from typing import Any
 
 VERIFY_TIMEOUT_SECONDS = 900
 
+# Git workflow policy. Main/master remain usable for the interactive Stop hook,
+# while orchestrated work always uses one of the standard topic prefixes.
+STANDARD_BRANCH_PREFIXES = ("feature/", "fix/", "refactor/", "chore/")
+PROTECTED_BRANCH_NAMES = {"main", "master"}
+CONVENTIONAL_COMMIT_TYPES = {"feat", "fix", "docs", "refactor", "style", "chore"}
+CONVENTIONAL_COMMIT_PATTERN = re.compile(
+    r"^(feat|fix|docs|refactor|style|chore)(?:\([A-Za-z0-9._/-]+\))?:\s+\S.+$"
+)
+
 # The one safety rail retained in full-autopilot mode: refuse to ship secrets.
 ENV_FILE_PATTERN = re.compile(r"(^|/)\.env(\.|$)")
 SECRETS_DIR_PATTERN = re.compile(r"(^|/)secrets(/|$)")
@@ -153,6 +162,50 @@ def git_stdout(repo: Path, args: list[str], *, check: bool = True) -> str:
 
 def current_branch(repo: Path) -> str:
     return git_stdout(repo, ["rev-parse", "--abbrev-ref", "HEAD"])
+
+
+def is_protected_branch(branch: str) -> bool:
+    return branch.strip().lower() in PROTECTED_BRANCH_NAMES
+
+
+def is_standard_topic_branch(branch: str) -> bool:
+    """Return whether *branch* uses an approved topic prefix and non-empty name."""
+    value = branch.strip()
+    return (
+        not is_protected_branch(value)
+        and any(value.startswith(prefix) and len(value) > len(prefix) for prefix in STANDARD_BRANCH_PREFIXES)
+        and ".." not in value
+        and not any(char.isspace() for char in value)
+    )
+
+
+def ensure_standard_topic_branch(branch: str) -> None:
+    if not is_standard_topic_branch(branch):
+        prefixes = ", ".join(prefix.rstrip("/") + "/<name>" for prefix in STANDARD_BRANCH_PREFIXES)
+        raise AgentError(f"Branch must use one of {prefixes}; got {branch!r}")
+
+
+def ensure_not_protected_branch(branch: str) -> None:
+    if is_protected_branch(branch):
+        raise AgentError(f"Direct commits to protected branch {branch!r} are not allowed.")
+
+
+def conventional_commit_subject(commit_type: str, description: str, scope: str | None = None) -> str:
+    commit_type = commit_type.strip().lower()
+    description = " ".join(description.strip().split())
+    if commit_type not in CONVENTIONAL_COMMIT_TYPES:
+        raise AgentError(f"Unsupported Conventional Commit type: {commit_type!r}")
+    if not description:
+        raise AgentError("Conventional Commit description must not be empty.")
+    subject = f"{commit_type}({scope.strip()}): {description}" if scope and scope.strip() else f"{commit_type}: {description}"
+    if not CONVENTIONAL_COMMIT_PATTERN.fullmatch(subject):
+        raise AgentError(f"Invalid Conventional Commit subject: {subject!r}")
+    return subject
+
+
+def validate_conventional_commit_subject(subject: str) -> None:
+    if not CONVENTIONAL_COMMIT_PATTERN.fullmatch(subject.strip()):
+        raise AgentError(f"Invalid Conventional Commit subject: {subject!r}")
 
 
 def ref_exists(repo: Path, ref: str) -> bool:
@@ -393,6 +446,63 @@ def is_sensitive_path(path: str) -> bool:
     return any(keyword in normalized for keyword in SECRET_KEYWORDS)
 
 
+def changed_paths(repo: Path) -> list[str]:
+    """Return all tracked and untracked paths participating in the worktree diff."""
+    result = run(
+        ["git", "status", "--porcelain=v1", "-z", "--untracked-files=all"],
+        repo,
+        check=True,
+    )
+    entries = [item for item in result.stdout.split("\0") if item]
+    paths: list[str] = []
+    for entry in entries:
+        value = entry[3:] if len(entry) >= 3 else entry
+        paths.append(value)
+        # Porcelain v1 uses a second NUL-delimited path for renames/copies.
+        if entry[:2] in {"R ", " R", "C ", " C", "RM", "RC"}:
+            continue
+    return list(dict.fromkeys(paths))
+
+
+def sensitive_changed_paths(repo: Path) -> list[str]:
+    return [path for path in changed_paths(repo) if is_sensitive_path(path)]
+
+
+def ensure_no_sensitive_changes(repo: Path) -> None:
+    paths = sensitive_changed_paths(repo)
+    if paths:
+        raise AgentError(
+            "Refusing to commit files matching secret patterns:\n"
+            + "\n".join(f"- {path}" for path in paths)
+            + "\nRemove them from the change set and retry."
+        )
+
+
+def fetch_base_branch(repo: Path, base_branch: str) -> None:
+    ensure_origin(repo)
+    run(["git", "fetch", "origin", base_branch], repo, check=True)
+
+
+def rebase_onto_base(repo: Path, base_branch: str) -> None:
+    """Rebase onto the fetched remote base; leave conflicts for manual recovery."""
+    if is_protected_branch(base_branch):
+        target = f"origin/{base_branch}"
+    else:
+        target = f"origin/{base_branch}" if remote_ref_exists(repo, base_branch) else base_branch
+    run(["git", "rebase", target], repo, check=True)
+
+
+def remove_worktree(repo: Path, path: Path) -> None:
+    run(["git", "worktree", "remove", "--force", str(path)], repo, check=True)
+
+
+def delete_local_branch(repo: Path, branch: str) -> None:
+    if is_protected_branch(branch):
+        raise AgentError(f"Refusing to delete protected branch {branch!r}.")
+    if branch_exists(repo, branch):
+        run(["git", "branch", "-D", branch], repo, check=True)
+
+
 # --------------------------------------------------------------------------- #
 # GitHub
 # --------------------------------------------------------------------------- #
@@ -419,9 +529,14 @@ def ensure_origin(repo: Path) -> None:
         raise AgentError("No Git remote named 'origin' is configured; cannot push or open a PR.")
 
 
-def push_branch(repo: Path, branch: str) -> None:
+def push_branch(repo: Path, branch: str, *, force_with_lease: bool = False) -> None:
     ensure_origin(repo)
-    run(["git", "push", "-u", "origin", branch], repo, check=True)
+    if force_with_lease and is_protected_branch(branch):
+        raise AgentError(f"Force push is never allowed for protected branch {branch!r}.")
+    args = ["git", "push", "-u", "origin", branch]
+    if force_with_lease:
+        args.insert(2, "--force-with-lease")
+    run(args, repo, check=True)
 
 
 def find_existing_pr(repo: Path, branch: str) -> dict[str, Any] | None:

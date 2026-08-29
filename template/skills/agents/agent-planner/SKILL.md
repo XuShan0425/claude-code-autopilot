@@ -110,7 +110,7 @@ traceability fields:
 
 Work Type, Requirements Source, Parent PRD, Parent Brief, task ID, parent epic,
 goal, non-goals, allowed files, forbidden files, dependencies, acceptance
-criteria, verification commands, branch (`agent/...`), base branch,
+criteria, verification commands, branch (for example `feature/...`), base branch,
 parallel-safety, expected outputs.
 
 Route-specific traceability:

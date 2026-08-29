@@ -1,8 +1,8 @@
 ---
-description: List agent/ PRs that failed to auto-merge
+description: List topic PRs that failed to auto-merge
 ---
 
-Check for any `agent/...` PRs that did not auto-merge (optional EPIC filter:
+Check for any standard topic branch PRs that did not auto-merge (optional EPIC filter:
 $ARGUMENTS).
 
 ```bash

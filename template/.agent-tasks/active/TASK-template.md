@@ -51,7 +51,10 @@ Describe the exact behavior, code, documentation, or tests that are in scope.
 
 ## Branch
 
-Branch: `agent/TASK-001-short-description`
+Branch: `feature/TASK-001-short-description`
+
+Use one of the approved prefixes: `feature/`, `fix/`, `refactor/`, or `chore/`.
+The orchestrator derives the prefix from Work Type when this field is empty.
 
 ## Base Branch
 

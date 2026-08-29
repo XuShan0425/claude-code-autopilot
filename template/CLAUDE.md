@@ -13,13 +13,22 @@ verification. The only hard guardrail is the secret block (below).
   (`.claude/settings.json`). Every tool call proceeds without asking.
 - **Auto-merge.** PRs merge into their base branch automatically once
   verification passes. There is no human review step.
-- **Main is allowed.** Agents may commit to and merge into `main` (or the
-  detected default branch). There is no protected-branch fence.
+- **Main is allowed.** In this repository's explicit autopilot mode, agents may commit,
+  push, and merge into `main` (or the detected default branch) when verification passes.
+  The Git policy helpers still forbid force-pushing protected branches.
+- **Standard topic branches.** Orchestrated work uses `feature/<name>`, `fix/<name>`,
+  `refactor/<name>`, or `chore/<name>`; task type determines the default prefix.
+- **Git synchronization.** Before a task worktree is created, fetch the base branch;
+  before committing, rebase the topic branch onto the latest `origin/<base>`.
+- **Conventional Commits.** Automated commits use `feat:`, `fix:`, `docs:`,
+  `refactor:`, `style:`, or `chore:` followed by a non-empty description.
+- **Worktree cleanup.** After a successful merge, remove the task worktree and its
+  local topic branch. On failure, preserve the worktree and record recovery details.
 - **Verification is the sole gate.** Detected `lint` / `typecheck` / `test`
   commands must pass before anything is committed. If they fail, fix them
   before stopping — failed verification blocks completion.
 - **Isolated task execution.** The orchestrator runs each task in its own git
-  worktree on an `agent/...` branch, then merges.
+  worktree on a standard topic branch, then merges.
 
 ## The one guardrail: secrets
 
@@ -77,7 +86,7 @@ python orchestrator/agent-team.py integrate
 - `run` — executes one task in a worktree: implement → verify → commit → push →
   open PR → **auto-merge** → move the task to `completed`.
 - `status` — shows task counts per state.
-- `integrate` — lists any `agent/...` PRs that failed to auto-merge.
+- `integrate` — lists any topic-branch PRs that failed to auto-merge.
 
 If a request changes product definition but no main PRD or feature brief is supplied, planning should stop and require `/prd` first.
 
@@ -98,7 +107,7 @@ Start from `.agent-tasks/active/TASK-template.md`. Every task must specify:
 work type, requirements source, parent PRD (or `N/A` for direct issue work),
 parent brief (or `N/A` unless planning from a feature brief), goal, scope,
 allowed files, forbidden files, acceptance criteria, verification commands,
-branch (`agent/...`), and base branch.
+branch (for example `feature/...`, `fix/...`, `refactor/...`, or `chore/...`), and base branch.
 
 ## Planning
 
