@@ -78,6 +78,9 @@ ALL_SKILLS=(
   agent-reviewer
   agent-integrator
   gh-fix-ci
+  gh-address-comments
+  find-skills
+  auto-skill-installer
 )
 
 echo "==> Skills (~/.claude/skills/)"

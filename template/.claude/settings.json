@@ -1,6 +1,19 @@
 {
   "permissions": {
-    "defaultMode": "bypassPermissions"
+    "defaultMode": "bypassPermissions",
+    "allow": [
+      "Bash(git:*)",
+      "Bash(poetry:*)",
+      "Bash(python:*)",
+      "Bash(pytest:*)",
+      "Bash(docker:*)",
+      "Bash(gh:*)",
+      "Bash(npm:*)",
+      "Bash(npx:*)",
+      "Bash(pip:*)",
+      "Bash(ruff:*)",
+      "Bash(mypy:*)"
+    ]
   },
   "hooks": {
     "PostToolUse": [
@@ -10,10 +23,7 @@
           {
             "type": "command",
             "command": "python",
-            "args": [
-              "${CLAUDE_PROJECT_DIR}/.claude/hooks/context_graph_hook.py",
-              "post-tool-use"
-            ],
+            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/context_graph_hook.py", "post-tool-use"],
             "timeout": 30,
             "statusMessage": "Updating context graph"
           }
@@ -36,10 +46,7 @@
           {
             "type": "command",
             "command": "python",
-            "args": [
-              "${CLAUDE_PROJECT_DIR}/.claude/hooks/context_graph_hook.py",
-              "stop"
-            ],
+            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/context_graph_hook.py", "stop"],
             "timeout": 60,
             "statusMessage": "Sweeping changed files"
           }

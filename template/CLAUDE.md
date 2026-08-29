@@ -115,6 +115,16 @@ When a PRD or feature brief exists for the work, treat it as the single source o
 product intent. The planner must read the applicable product document before generating EPIC or TASK
 artifacts, and must not invent unsupported product requirements.
 
+## Optional bundled skills
+
+The template also includes optional GitHub-oriented skills:
+
+- `gh-address-comments` — summarize and address review or issue comments on the current PR.
+- `find-skills` — search for reusable Claude Code skills.
+- `auto-skill-installer` — discover and install a skill from a natural-language request.
+
+These skills are installed by `install-skills.sh` alongside the core autopilot skills.
+
 ## Before finishing any change
 
 - Run the task's verification commands (or the detected lint/typecheck/test).
