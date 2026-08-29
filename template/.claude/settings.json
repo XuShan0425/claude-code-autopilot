@@ -1,0 +1,57 @@
+{
+  "permissions": {
+    "defaultMode": "bypassPermissions",
+    "allow": [
+      "Bash(git:*)",
+      "Bash(poetry:*)",
+      "Bash(python:*)",
+      "Bash(pytest:*)",
+      "Bash(docker:*)",
+      "Bash(gh:*)",
+      "Bash(npm:*)",
+      "Bash(npx:*)",
+      "Bash(pip:*)",
+      "Bash(ruff:*)",
+      "Bash(mypy:*)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python",
+            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/context_graph_hook.py", "post-tool-use"],
+            "timeout": 30,
+            "statusMessage": "Updating context graph"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/stop-auto-pr.py\"",
+            "timeout": 1200,
+            "statusMessage": "Verifying, committing, and auto-merging"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python",
+            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/context_graph_hook.py", "stop"],
+            "timeout": 60,
+            "statusMessage": "Sweeping changed files"
+          }
+        ]
+      }
+    ]
+  }
+}

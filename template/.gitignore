@@ -1,0 +1,8 @@
+# Context graph runtime artifacts
+.context-graph/
+
+# Python bytecode / caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/

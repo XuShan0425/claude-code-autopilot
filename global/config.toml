@@ -1,9 +1,0 @@
-# Optional global Codex defaults.
-# Copy or merge this file into ~/.codex/config.toml if these defaults match
-# your local policy. Project hooks are installed separately under .codex/.
-
-sandbox_mode = "workspace-write"
-
-# Keep approvals explicit by default. Individual projects may use stricter
-# rules in their own documentation.
-approval_policy = "on-request"

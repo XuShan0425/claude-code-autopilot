@@ -1,0 +1,16 @@
+# Python bytecode / caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Runtime outputs when working on the template repo itself
+/.agent-runs/
+/.agent-tasks/
+/docs/exec-plans/
+
+# Local Claude Code state for this template repo
+/.claude/
+
+# Windows shortcuts / local artifacts
+*.lnk
